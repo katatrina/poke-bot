@@ -103,7 +103,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Auto-load knowledge base if flag is set
 	if loadKB {
 		slog.Info("Auto-loading knowledge base...")
-		if err := ingestModule.AutoLoadKB(context.Background()); err != nil {
+		if err = ingestModule.AutoLoadKB(context.Background()); err != nil {
 			slog.Error("Failed to auto-load knowledge base", "error", err)
 		} else {
 			slog.Info("Knowledge base loaded successfully")
