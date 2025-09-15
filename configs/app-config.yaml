@@ -1,0 +1,8 @@
+server:
+  port: 8080
+
+llm:
+  provider: "ollama"  # ollama hoặc openai
+  chatModel: "qwen2.5-coder-3b-instruct"
+  embeddingModel: "text-embedding-mxbai-embed-large-v1"
+  temperature: 0.8
