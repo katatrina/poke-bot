@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 	
-	"github.com/katatrina/rag-chatbot-go/cmd"
+	"github.com/katatrina/go-rag-chatbot/cmd"
 )
 
 func main() {
