@@ -1,0 +1,12 @@
+vectorDB:
+  vectorSize: 768
+
+llm:
+  chatModel: "llama3.2"
+  embeddingModel: "nomic-embed-text"
+  scoreThreshold: 0.7
+  temperature: 0.7
+  providerType: "ollama"
+
+server:
+  port: 8080
