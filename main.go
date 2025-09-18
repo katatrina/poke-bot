@@ -302,23 +302,23 @@ func (app *App) chatHandler(c *gin.Context) {
 		return
 	}
 	
-	// Build context from results
-	var context strings.Builder
-	context.WriteString("Context:\n")
+	// Build builder from results
+	var builder strings.Builder
+	builder.WriteString("Context:\n")
 	for _, point := range searchResult {
 		if textValue, ok := point.Payload["text"]; ok {
-			context.WriteString(fmt.Sprintf("- %v\n", textValue.GetStringValue()))
+			builder.WriteString(fmt.Sprintf("- %v\n", textValue.GetStringValue()))
 		}
 	}
 	
 	// Build prompt
-	prompt := fmt.Sprintf(`Based on the following context, answer the question.
+	prompt := fmt.Sprintf(`Based on the following builder, answer the question.
  
 %s
 
 Question: %s
 
-Answer:`, context.String(), req.Question)
+Answer:`, builder.String(), req.Question)
 	
 	// Generate response
 	answer, err := app.generateResponse(prompt)
