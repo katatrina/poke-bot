@@ -9,4 +9,4 @@ ollama:
 	curl http://localhost:11434/api/pull -d '{"name":"nomic-embed-text"}'
 
 run:
-	go run ./cmd
+	go run .
