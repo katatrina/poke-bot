@@ -14,6 +14,8 @@ type Config struct {
 	Qdrant QdrantConfig `yaml:"qdrant"`
 	
 	Ollama OllamaConfig `yaml:"ollama"`
+	
+	RAG RAGConfig `yaml:"rag"`
 }
 
 type QdrantConfig struct {
@@ -29,9 +31,9 @@ type OllamaConfig struct {
 }
 
 type RAGConfig struct {
-	ChunkSize    int
-	ChunkOverlap int
-	TopK         int
+	ChunkSize    int `yaml:"chunk_size"`
+	ChunkOverlap int `yaml:"chunk_overlap"`
+	TopK         int `yaml:"top_k"`
 }
 
 func LoadConfig(path string) (*Config, error) {

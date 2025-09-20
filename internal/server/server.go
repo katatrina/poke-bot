@@ -14,15 +14,13 @@ type HTTPServer struct {
 	hdl    *handler.HTTPHandler
 }
 
-func NewHTTPServer(cfg *config.Config) *HTTPServer {
+func NewHTTPServer(cfg *config.Config, hdl *handler.HTTPHandler) *HTTPServer {
 	router := gin.Default()
-	
-	httpHandler := handler.NewHTTPHandler()
 	
 	srv := &HTTPServer{
 		config: cfg,
 		router: router,
-		hdl:    httpHandler,
+		hdl:    hdl,
 	}
 	
 	return srv
@@ -32,7 +30,7 @@ func (s *HTTPServer) SetupRoutes() {
 	v1 := s.router.Group("/api/v1")
 	
 	v1.GET("/health", s.hdl.HealthCheck)
-	v1.POST("/ingest", s.hdl.Ingest)
+	v1.POST("/ingest", s.hdl.IngestDoc)
 	v1.POST("/chat", s.hdl.Chat)
 }
 
