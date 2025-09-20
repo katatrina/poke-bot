@@ -8,5 +8,5 @@ ollama:
   model: qwen2.5-coder:3b
   embedding_model: nomic-embed-text
 
-http_server:
+server:
   port: 8080
