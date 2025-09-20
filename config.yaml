@@ -1,0 +1,17 @@
+http_server:
+  port: 8080
+
+qdrant:
+  host: "localhost"
+  port: 6334
+  collection: "documents"
+
+ollama:
+  base_url: "http://localhost:11434"
+  chat_model: "qwen2.5-coder:3b"
+  embedding_model: "nomic-embed-text"
+
+rag:
+  chunk_size: 1000
+  chunk_overlap: 200
+  top_k: 5
