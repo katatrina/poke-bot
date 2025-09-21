@@ -79,11 +79,16 @@ func (repo *VectorRepository) Upsert(ctx context.Context, documents []model.Docu
 		points = append(points, &point)
 	}
 	
-	return nil
+	_, err := repo.qdrantClient.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: repo.collection,
+		Points:         points,
+	})
+	
+	return err
 }
 
 func (repo *VectorRepository) Search(ctx context.Context, embedding []float32, limit int) ([]model.SearchResult, error) {
-	searchResult, err := repo.qdrantClient.Query(context.Background(), &qdrant.QueryPoints{
+	searchResult, err := repo.qdrantClient.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: repo.collection,
 		Query:          qdrant.NewQuery(embedding...),
 		Limit:          qdrant.PtrOf(uint64(limit)),
