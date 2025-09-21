@@ -67,6 +67,7 @@ func (hdl *HTTPHandler) Chat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
 		})
+		return
 	}
 	
 	// Process the chat request
