@@ -32,6 +32,8 @@ func (s *HTTPServer) SetupRoutes() {
 	v1.GET("/health", s.hdl.HealthCheck)
 	v1.POST("/ingest", s.hdl.IngestDoc)
 	v1.POST("/chat", s.hdl.Chat)
+	
+	s.router.StaticFile("/", "./web/index.html")
 }
 
 func (s *HTTPServer) Start() error {
