@@ -38,7 +38,7 @@ func main() {
 	
 	hdl := handler.NewHTTPHandler(ragService)
 	
-	srv := server.NewHTTPServer(cfg, hdl)
+	srv := server.NewServer(cfg, hdl)
 	srv.SetupRoutes()
 	
 	if err = srv.Start(); err != nil {

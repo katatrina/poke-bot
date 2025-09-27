@@ -1,0 +1,28 @@
+# kb-config.yaml - Knowledge base config
+source:
+  name: pokemondb
+  base_url: https://pokemondb.net
+
+crawl:
+  start_url: /pokedex/national
+  max_pokemon: 151  # Gen 1 first, expand later
+  delay_ms: 500     # Be nice to their server
+  timeout: 30
+  user_agent: "Mozilla/5.0 (educational bot)"
+
+parse:
+  sections:
+    - pokedex_data    # Basic info
+    - base_stats      # Stats table
+    - type_defenses   # Type effectiveness
+    - evolution       # Evolution chain
+    - descriptions    # Natural text descriptions
+
+  skip_sections:
+    - moves          # Too detailed for now
+    - sprites        # Images
+    - locations      # Game-specific
+
+storage:
+  strategy: one_doc_per_pokemon  # Simple approach
+  add_metadata: true

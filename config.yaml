@@ -1,17 +1,18 @@
-http_server:
+server:
   port: 8080
 
 qdrant:
   host: "localhost"
   port: 6334
-  collection: "documents"
+  collection: "pokemons"
 
 ollama:
   base_url: "http://localhost:11434"
-  chat_model: "qwen2.5-coder:3b"
+  chat_model: "qwen2.5:7b-instruct"
   embedding_model: "nomic-embed-text"
 
 rag:
-  chunk_size: 1000
-  chunk_overlap: 200
+  chunk_size: 600
+  chunk_overlap: 100
   top_k: 5
+  temperature: 0.3

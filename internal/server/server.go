@@ -8,16 +8,16 @@ import (
 	"github.com/katatrina/poke-bot/internal/handler"
 )
 
-type HTTPServer struct {
+type Server struct {
 	config *config.Config
 	router *gin.Engine
 	hdl    *handler.HTTPHandler
 }
 
-func NewHTTPServer(cfg *config.Config, hdl *handler.HTTPHandler) *HTTPServer {
+func NewServer(cfg *config.Config, hdl *handler.HTTPHandler) *Server {
 	router := gin.Default()
 	
-	srv := &HTTPServer{
+	srv := &Server{
 		config: cfg,
 		router: router,
 		hdl:    hdl,
@@ -26,7 +26,7 @@ func NewHTTPServer(cfg *config.Config, hdl *handler.HTTPHandler) *HTTPServer {
 	return srv
 }
 
-func (s *HTTPServer) SetupRoutes() {
+func (s *Server) SetupRoutes() {
 	v1 := s.router.Group("/api/v1")
 	
 	v1.GET("/health", s.hdl.HealthCheck)
@@ -36,6 +36,6 @@ func (s *HTTPServer) SetupRoutes() {
 	s.router.StaticFile("/", "./web/index.html")
 }
 
-func (s *HTTPServer) Start() error {
-	return s.router.Run(fmt.Sprintf(":%d", s.config.HTTPServer.Port))
+func (s *Server) Start() error {
+	return s.router.Run(fmt.Sprintf(":%d", s.config.Server.Port))
 }

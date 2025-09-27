@@ -7,9 +7,9 @@ import (
 )
 
 type Config struct {
-	HTTPServer struct {
+	Server struct {
 		Port int `yaml:"port"`
-	} `yaml:"http_server"`
+	} `yaml:"server"`
 	
 	Qdrant QdrantConfig `yaml:"qdrant"`
 	
