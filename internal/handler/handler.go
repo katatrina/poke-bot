@@ -40,7 +40,7 @@ func (hdl *HTTPHandler) IngestDoc(c *gin.Context) {
 		return
 	}
 	
-	if err := hdl.ragService.IngestDocument(c.Request.Context(), &req); err != nil {
+	if err := hdl.ragService.IngestPokemonData(c.Request.Context(), &req); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "failed to ingest document",
 			"details": err.Error(),

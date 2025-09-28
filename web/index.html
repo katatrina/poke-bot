@@ -3,230 +3,566 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG Chatbot</title>
+    <title>PokéBot - AI Pokemon Assistant</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-50">
-<div class="max-w-4xl mx-auto p-4 h-screen flex flex-col">
-    <!-- Header -->
-    <div class="bg-white rounded-t-lg shadow-lg p-4 border-b">
-        <h1 class="text-2xl font-bold text-gray-800">🤖 RAG Chatbot</h1>
-        <p class="text-gray-600 text-sm">Ask questions about your ingested documents</p>
-    </div>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .pokemon-font {
+            font-family: 'Press Start 2P', cursive;
+        }
+        .main-font {
+            font-family: 'Rubik', sans-serif;
+        }
+        .pokeball-spin {
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .type-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .type-normal { background: #A8A878; color: white; }
+        .type-fire { background: #F08030; color: white; }
+        .type-water { background: #6890F0; color: white; }
+        .type-grass { background: #78C850; color: white; }
+        .type-electric { background: #F8D030; color: black; }
+        .type-ice { background: #98D8D8; color: black; }
+        .type-fighting { background: #C03028; color: white; }
+        .type-poison { background: #A040A0; color: white; }
+        .type-ground { background: #E0C068; color: black; }
+        .type-flying { background: #A890F0; color: white; }
+        .type-psychic { background: #F85888; color: white; }
+        .type-bug { background: #A8B820; color: white; }
+        .type-rock { background: #B8A038; color: white; }
+        .type-ghost { background: #705898; color: white; }
+        .type-dragon { background: #7038F8; color: white; }
+        .type-dark { background: #705848; color: white; }
+        .type-steel { background: #B8B8D0; color: black; }
+        .type-fairy { background: #EE99AC; color: black; }
 
-    <!-- Chat Messages Container -->
-    <div class="bg-white shadow-lg flex-1 flex flex-col">
-        <!-- Messages Area -->
-        <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-            <div class="text-gray-500 text-center py-8">
-                <div class="text-4xl mb-2">💬</div>
-                <p>Hi! I'm ready to answer questions about your documents.</p>
-                <p class="text-sm mt-1">Use the API to ingest documents first, then start chatting!</p>
-            </div>
-        </div>
-
-        <!-- Input Area -->
-        <div class="border-t bg-gray-50 p-4">
-            <div class="flex gap-3">
-                <input id="message-input"
-                       type="text"
-                       placeholder="Ask anything about your documents..."
-                       class="flex-1 border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                       maxlength="1000">
-                <button id="send-btn"
-                        class="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-medium transition-colors">
-                    Send
-                </button>
-            </div>
-            <div class="text-xs text-gray-500 mt-2 flex items-center gap-2">
-                <span class="inline-block w-2 h-2 rounded-full bg-green-400"></span>
-                <span>API ready at <code class="bg-gray-200 px-1 rounded">/api/v1/ingest</code> and <code class="bg-gray-200 px-1 rounded">/api/v1/chat</code></span>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-    class ChatApp {
-        constructor() {
-            this.context = "";
-            this.isLoading = false;
-            this.setupEventListeners();
+        .chat-message {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
-        setupEventListeners() {
-            const sendBtn = document.getElementById('send-btn');
-            const messageInput = document.getElementById('message-input');
+        .floating {
+            animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
 
-            sendBtn.onclick = () => this.sendMessage();
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
 
-            messageInput.onkeypress = (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    this.sendMessage();
-                }
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .pokemon-card {
+            background: linear-gradient(145deg, #ffffff, #f0f0f0);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .loading-dots span {
+            animation: blink 1.4s infinite;
+        }
+        .loading-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .loading-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        @keyframes blink {
+            0%, 60%, 100% { opacity: 0.3; }
+            30% { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="main-font bg-gray-50">
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // Pokeball Icon Component
+    const PokeballIcon = ({ className = "w-6 h-6", spinning = false }) => (
+        <svg className={`${className} ${spinning ? 'pokeball-spin' : ''}`} viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+            <path d="M2 12h20" stroke="currentColor" strokeWidth="2"/>
+            <circle cx="12" cy="12" r="3" fill="currentColor" stroke="currentColor" strokeWidth="2"/>
+            <circle cx="12" cy="12" r="1" fill="white"/>
+        </svg>
+    );
+
+    // Main App Component
+    const PokemonRAGBot = () => {
+        const [messages, setMessages] = useState([]);
+        const [inputMessage, setInputMessage] = useState('');
+        const [isLoading, setIsLoading] = useState(false);
+        const messagesEndRef = useRef(null);
+
+        // Add welcome message on mount
+        useEffect(() => {
+            setMessages([{
+                id: Date.now(),
+                type: 'assistant',
+                content: "Hi! I'm PokéBot, your AI Pokemon expert! 🎮\n\nI can answer questions about Pokemon stats, types, abilities, evolutions, and more. Ask me anything!",
+                timestamp: new Date(),
+            }]);
+        }, []);
+
+        useEffect(() => {
+            scrollToBottom();
+        }, [messages]);
+
+        const scrollToBottom = () => {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        };
+
+        const handleSendMessage = async () => {
+            if (!inputMessage.trim() || isLoading) return;
+
+            const userMessage = {
+                id: Date.now(),
+                type: 'user',
+                content: inputMessage,
+                timestamp: new Date(),
             };
 
-            // Auto-focus input
-            messageInput.focus();
-        }
-
-        async sendMessage() {
-            const input = document.getElementById('message-input');
-            const message = input.value.trim();
-
-            if (!message || this.isLoading) return;
-
-            // Clear input and add user message
-            input.value = '';
-            this.addMessage(message, 'user');
-            this.setLoading(true);
+            setMessages(prev => [...prev, userMessage]);
+            setInputMessage('');
+            setIsLoading(true);
 
             try {
                 const response = await fetch('/api/v1/chat', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        message: message,
-                        context: this.context
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: userMessage.content }),
                 });
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || `HTTP ${response.status}`);
-                }
-
                 const data = await response.json();
-                this.addMessage(data.response, 'assistant', data.sources);
-                this.context = data.context || ""; // Update context for follow-up questions
 
+                if (response.ok) {
+                    setMessages(prev => [...prev, {
+                        id: Date.now(),
+                        type: 'assistant',
+                        content: data.response,
+                        sources: data.sources || [],
+                        timestamp: new Date(),
+                    }]);
+                } else {
+                    throw new Error(data.error || 'Failed to get response');
+                }
             } catch (error) {
-                this.addMessage(`❌ Error: ${error.message}`, 'error');
-                console.error('Chat error:', error);
+                setMessages(prev => [...prev, {
+                    id: Date.now(),
+                    type: 'error',
+                    content: `Error: ${error.message}`,
+                    timestamp: new Date(),
+                }]);
             } finally {
-                this.setLoading(false);
-                input.focus();
+                setIsLoading(false);
             }
-        }
+        };
 
-        addMessage(content, type, sources = []) {
-            const messages = document.getElementById('messages');
 
-            // Remove welcome message if it exists
-            const welcomeMsg = messages.querySelector('.text-center.py-8');
-            if (welcomeMsg) {
-                welcomeMsg.remove();
-            }
+        const suggestedQuestions = [
+            "What type is Pikachu?",
+            "Tell me about Charizard's stats",
+            "What are Fire Pokemon weak against?",
+            "Compare Bulbasaur and Squirtle",
+            "What does Charmander evolve into?",
+            "Which Pokemon has the highest speed?"
+        ];
 
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `flex ${type === 'user' ? 'justify-end' : 'justify-start'}`;
+        const MessageBubble = ({ message }) => {
+            const formatContent = (content) => {
+                // Simple formatting for better readability
+                return content.split('\n').map((line, i) => (
+                    <React.Fragment key={i}>
+                        {line}
+                        {i < content.split('\n').length - 1 && <br />}
+                    </React.Fragment>
+                ));
+            };
 
-            const contentDiv = document.createElement('div');
-            const baseClasses = 'max-w-3xl px-4 py-3 rounded-lg break-words';
-
-            switch (type) {
-                case 'user':
-                    contentDiv.className = `${baseClasses} bg-blue-500 text-white ml-12`;
-                    break;
-                case 'assistant':
-                    contentDiv.className = `${baseClasses} bg-gray-100 text-gray-800 mr-12`;
-                    break;
-                case 'error':
-                    contentDiv.className = `${baseClasses} bg-red-100 text-red-800 border border-red-200`;
-                    break;
-            }
-
-            // Format content
-            if (type === 'assistant') {
-                // Format assistant response with sources
-                const responseHtml = this.formatAssistantResponse(content, sources);
-                contentDiv.innerHTML = responseHtml;
-            } else {
-                contentDiv.textContent = content;
-            }
-
-            messageDiv.appendChild(contentDiv);
-            messages.appendChild(messageDiv);
-
-            // Scroll to bottom
-            messages.scrollTop = messages.scrollHeight;
-        }
-
-        formatAssistantResponse(content, sources) {
-            let html = `<div class="whitespace-pre-wrap">${this.escapeHtml(content)}</div>`;
-
-            if (sources && sources.length > 0) {
-                html += `
-                        <div class="mt-3 pt-3 border-t border-gray-300">
-                            <div class="text-xs text-gray-600 font-medium mb-1">📚 Sources:</div>
-                            <div class="text-xs text-gray-500">
-                                ${sources.map(source => `<span class="bg-gray-200 px-2 py-1 rounded mr-1">${this.escapeHtml(source)}</span>`).join('')}
+            return (
+                <div className={`chat-message flex ${message.type === 'user' ? 'justify-end' : 'justify-start'} mb-4`}>
+                    <div className={`max-w-3xl ${message.type === 'user' ? 'order-2' : 'order-1'}`}>
+                        {message.type === 'assistant' && (
+                            <div className="flex items-center mb-1">
+                                <PokeballIcon className="w-4 h-4 text-purple-600 mr-2" />
+                                <span className="text-xs text-gray-500 font-medium">PokéBot</span>
+                            </div>
+                        )}
+                        {message.type === 'user' && (
+                            <div className="flex items-center justify-end mb-1">
+                                <span className="text-xs text-gray-500 font-medium">You</span>
+                            </div>
+                        )}
+                        <div className={`px-4 py-3 rounded-2xl ${
+                            message.type === 'user'
+                                ? 'gradient-bg text-white'
+                                : message.type === 'error'
+                                    ? 'bg-red-100 text-red-800 border border-red-300'
+                                    : 'bg-white shadow-md border border-gray-100'
+                        }`}>
+                            <div className="text-sm leading-relaxed">
+                                {formatContent(message.content)}
+                            </div>
+                            {message.sources && message.sources.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-gray-200">
+                                    <div className="flex items-center mb-1">
+                                        <svg className="w-3 h-3 text-gray-500 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+                                            <path fillRule="evenodd" d="M4 5a2 2 0 012-2 1 1 0 000 2H6a2 2 0 100 4h2a2 2 0 100-4h-.5a1 1 0 000-2H8a2 2 0 012-2z"/>
+                                        </svg>
+                                        <span className="text-xs text-gray-500 font-medium">Sources:</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
+                                        {message.sources.map((source, i) => (
+                                            <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                                    {source}
+                                                </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            <div className="mt-2 text-xs text-gray-400">
+                                {new Date(message.timestamp).toLocaleTimeString()}
                             </div>
                         </div>
-                    `;
-            }
+                    </div>
+                </div>
+            );
+        };
 
-            return html;
-        }
-
-        escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        setLoading(loading) {
-            this.isLoading = loading;
-            const sendBtn = document.getElementById('send-btn');
-            const messageInput = document.getElementById('message-input');
-
-            sendBtn.disabled = loading;
-            messageInput.disabled = loading;
-
-            if (loading) {
-                sendBtn.textContent = 'Sending...';
-                this.addTypingIndicator();
-            } else {
-                sendBtn.textContent = 'Send';
-                this.removeTypingIndicator();
-            }
-        }
-
-        addTypingIndicator() {
-            const messages = document.getElementById('messages');
-            const typingDiv = document.createElement('div');
-            typingDiv.className = 'flex justify-start';
-            typingDiv.id = 'typing-indicator';
-
-            typingDiv.innerHTML = `
-                    <div class="max-w-3xl px-4 py-3 bg-gray-100 rounded-lg mr-12">
-                        <div class="flex space-x-2">
-                            <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                            <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
-                            <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+        return (
+            <div className="h-screen flex flex-col bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+                {/* Header */}
+                <header className="gradient-bg shadow-lg">
+                    <div className="max-w-7xl mx-auto px-4 py-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                                <PokeballIcon className="w-10 h-10 text-white floating" />
+                                <div>
+                                    <h1 className="pokemon-font text-white text-xl">PokéBot</h1>
+                                    <p className="text-purple-100 text-xs mt-1">AI-Powered Pokemon Assistant</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                `;
+                </header>
 
-            messages.appendChild(typingDiv);
-            messages.scrollTop = messages.scrollHeight;
-        }
+                {/* Main Content */}
+                <main className="flex-1 overflow-hidden">
+                    <div className="h-full max-w-7xl mx-auto px-4 py-6">
+                        <div className="h-full flex gap-6">
+                            {/* Chat Section */}
+                            <div className="flex-1 bg-white rounded-xl shadow-xl flex flex-col">
+                                    {/* Messages Area */}
+                                    <div className="flex-1 overflow-y-auto p-6">
+                                        {messages.map(message => (
+                                            <MessageBubble key={message.id} message={message} />
+                                        ))}
+                                        {isLoading && (
+                                            <div className="flex justify-start mb-4">
+                                                <div className="bg-white shadow-md border border-gray-100 px-4 py-3 rounded-2xl">
+                                                    <div className="flex items-center space-x-2">
+                                                        <PokeballIcon className="w-4 h-4 text-purple-600" spinning={true} />
+                                                        <div className="loading-dots flex space-x-1">
+                                                            <span className="text-gray-500">●</span>
+                                                            <span className="text-gray-500">●</span>
+                                                            <span className="text-gray-500">●</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div ref={messagesEndRef} />
+                                    </div>
 
-        removeTypingIndicator() {
-            const typingIndicator = document.getElementById('typing-indicator');
-            if (typingIndicator) {
-                typingIndicator.remove();
-            }
-        }
-    }
+                                    {/* Input Area */}
+                                    <div className="border-t border-gray-200 p-4">
+                                        <div className="flex space-x-2">
+                                            <input
+                                                type="text"
+                                                value={inputMessage}
+                                                onChange={(e) => setInputMessage(e.target.value)}
+                                                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                                                placeholder="Ask about Pokemon types, stats, evolutions..."
+                                                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                                disabled={isLoading}
+                                            />
+                                            <button
+                                                onClick={handleSendMessage}
+                                                disabled={isLoading || !inputMessage.trim()}
+                                                className="px-6 py-3 gradient-bg text-white rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                                            >
+                                                <span>Send</span>
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
 
-    // Initialize the app when DOM is loaded
-    document.addEventListener('DOMContentLoaded', () => {
-        new ChatApp();
-    });
+                                {/* Suggestions Sidebar */}
+                                <div className="w-80 bg-white rounded-xl shadow-xl p-6">
+                                    <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
+                                        <svg className="w-5 h-5 text-yellow-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                                        </svg>
+                                        Suggested Questions
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {suggestedQuestions.map((question, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => {
+                                                    setInputMessage(question);
+                                                    handleSendMessage();
+                                                }}
+                                                className="w-full text-left px-3 py-2 text-sm text-gray-700 bg-gray-50 hover:bg-purple-50 hover:text-purple-700 rounded-lg transition"
+                                            >
+                                                {question}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <div className="mt-6 p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg">
+                                        <h4 className="font-medium text-gray-800 mb-2 text-sm">💡 Pro Tips</h4>
+                                        <ul className="text-xs text-gray-600 space-y-1">
+                                            <li>• Ask about specific Pokemon stats</li>
+                                            <li>• Compare different Pokemon</li>
+                                            <li>• Learn about type matchups</li>
+                                            <li>• Explore evolution chains</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            /* Data Management Tab */
+                            <div className="h-full bg-white rounded-xl shadow-xl p-6 overflow-y-auto">
+                                <h2 className="text-2xl font-bold text-gray-800 mb-6">Data Management</h2>
+
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    {/* Crawl Pokemon Card */}
+                                    <div className="pokemon-card p-6 rounded-xl">
+                                        <div className="flex items-center mb-4">
+                                            <PokeballIcon className="w-8 h-8 text-purple-600 mr-3" />
+                                            <div>
+                                                <h3 className="text-lg font-semibold text-gray-800">Crawl Pokemon Data</h3>
+                                                <p className="text-sm text-gray-500">Import from PokemonDB</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Number of Pokemon
+                                                </label>
+                                                <div className="flex items-center space-x-2">
+                                                    <input
+                                                        type="range"
+                                                        min="1"
+                                                        max="151"
+                                                        value={crawlLimit}
+                                                        onChange={(e) => setCrawlLimit(Number(e.target.value))}
+                                                        className="flex-1"
+                                                        disabled={isIngesting}
+                                                    />
+                                                    <span className="w-12 text-center font-medium text-purple-700">
+                                                            {crawlLimit}
+                                                        </span>
+                                                </div>
+                                                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                                    <span>Quick Test</span>
+                                                    <span>All Gen 1</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                                <p className="text-xs text-yellow-800">
+                                                    <strong>Time Estimate:</strong> ~{Math.ceil(crawlLimit * 0.5)} minutes
+                                                </p>
+                                            </div>
+
+                                            <button
+                                                onClick={handleCrawlPokemon}
+                                                disabled={isIngesting}
+                                                className="w-full py-3 gradient-bg text-white rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                                            >
+                                                {isIngesting ? (
+                                                    <>
+                                                        <PokeballIcon className="w-5 h-5" spinning={true} />
+                                                        <span>Crawling...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                        </svg>
+                                                        <span>Start Crawling</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Custom Text Card */}
+                                    <div className="pokemon-card p-6 rounded-xl">
+                                        <div className="flex items-center mb-4">
+                                            <svg className="w-8 h-8 text-blue-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                            <div>
+                                                <h3 className="text-lg font-semibold text-gray-800">Custom Text</h3>
+                                                <p className="text-sm text-gray-500">Add your own content</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    File Name (optional)
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={fileName}
+                                                    onChange={(e) => setFileName(e.target.value)}
+                                                    placeholder="custom_pokemon.txt"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    disabled={isIngesting}
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Content
+                                                </label>
+                                                <textarea
+                                                    value={customText}
+                                                    onChange={(e) => setCustomText(e.target.value)}
+                                                    placeholder="Paste Pokemon information, facts, or any custom content here..."
+                                                    className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                                    disabled={isIngesting}
+                                                />
+                                            </div>
+
+                                            <button
+                                                onClick={handleIngestText}
+                                                disabled={isIngesting || !customText.trim()}
+                                                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                                            >
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                                </svg>
+                                                <span>Ingest Text</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Status Messages */}
+                                {ingestStatus && (
+                                    <div className={`mt-6 p-4 rounded-lg flex items-start space-x-3 ${
+                                        ingestStatus.type === 'success' ? 'bg-green-50 border border-green-200' :
+                                            ingestStatus.type === 'error' ? 'bg-red-50 border border-red-200' :
+                                                'bg-blue-50 border border-blue-200'
+                                    }`}>
+                                        {ingestStatus.type === 'success' ? (
+                                            <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
+                                            </svg>
+                                        ) : ingestStatus.type === 'error' ? (
+                                            <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"/>
+                                            </svg>
+                                        ) : (
+                                            <PokeballIcon className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" spinning={true} />
+                                        )}
+                                        <div className="flex-1">
+                                            <p className={`font-medium ${
+                                                ingestStatus.type === 'success' ? 'text-green-800' :
+                                                    ingestStatus.type === 'error' ? 'text-red-800' :
+                                                        'text-blue-800'
+                                            }`}>
+                                                {ingestStatus.message}
+                                            </p>
+                                            {ingestStatus.details && (
+                                                <div className="mt-2 text-sm text-gray-600">
+                                                    {Object.entries(ingestStatus.details).map(([key, value]) => (
+                                                        <div key={key}>
+                                                            <span className="capitalize">{key.replace('_', ' ')}:</span> {value}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Quick Stats */}
+                                <div className="mt-6 grid grid-cols-3 gap-4">
+                                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg">
+                                        <div className="text-2xl font-bold text-purple-700">151</div>
+                                        <div className="text-sm text-purple-600">Gen 1 Pokemon</div>
+                                    </div>
+                                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg">
+                                        <div className="text-2xl font-bold text-blue-700">18</div>
+                                        <div className="text-sm text-blue-600">Pokemon Types</div>
+                                    </div>
+                                    <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg">
+                                        <div className="text-2xl font-bold text-green-700">∞</div>
+                                        <div className="text-sm text-green-600">Questions</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </main>
+            </div>
+        );
+    };
+
+    // Render the app
+    ReactDOM.render(<PokemonRAGBot />, document.getElementById('root'));
 </script>
 </body>
 </html>

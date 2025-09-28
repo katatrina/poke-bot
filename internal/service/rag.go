@@ -4,92 +4,163 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	
 	"github.com/google/uuid"
 	"github.com/katatrina/poke-bot/internal/config"
+	"github.com/katatrina/poke-bot/internal/crawler"
 	"github.com/katatrina/poke-bot/internal/model"
 	"github.com/katatrina/poke-bot/internal/repository"
 	"github.com/tmc/langchaingo/textsplitter"
 	"resty.dev/v3"
 )
 
+const (
+	pokemonDBSource = "pokemondb"
+)
+
 type RAGService struct {
 	config     *config.Config
 	vectorRepo *repository.VectorRepository
 	restClient *resty.Client
+	crawler    *crawler.PokemonDBCrawler
 }
 
-func NewRAGService(cfg *config.Config, vectorRepo *repository.VectorRepository, restClient *resty.Client) *RAGService {
+func NewRAGService(
+	cfg *config.Config,
+	vectorRepo *repository.VectorRepository,
+	restClient *resty.Client,
+) *RAGService {
 	return &RAGService{
 		config:     cfg,
 		vectorRepo: vectorRepo,
 		restClient: restClient,
+		crawler:    crawler.NewPokemonDBCrawler(),
 	}
 }
 
 type IngestRequest struct {
-	Content     string `json:"content"`
-	Filename    string `json:"filename"`
-	ContentType string `json:"content_type"`
+	Source     string `json:"source,omitempty"`      // "pokemondb" or "text"
+	CrawlLimit int    `json:"crawl_limit,omitempty"` // Number of Pokemon to crawl (default 10)
+	StartFrom  int    `json:"start_from,omitempty"`  // Start from Pokemon number (for pagination)
 }
 
 func (req *IngestRequest) Validate() error {
-	if req.ContentType != "text" {
-		return fmt.Errorf("unsupported content type: %s", req.ContentType)
+	if req.Source != pokemonDBSource {
+		return fmt.Errorf("unsupported source: %s (must be 'pokemondb')", req.Source)
 	}
 	
-	if len(req.Content) == 0 {
-		return model.ErrEmptyDocContent
+	if req.CrawlLimit <= 0 {
+		req.CrawlLimit = 10 // Default to 10 Pokemon
 	}
 	
-	if len(req.Content) > 10*1024*1024 { // 10MB limit
-		return model.ErrDocContentTooLarge
+	if req.CrawlLimit > 151 {
+		req.CrawlLimit = 151 // Max Gen 1 Pokemon
+		
 	}
 	
 	return nil
 }
 
-func (s *RAGService) IngestDocument(ctx context.Context, req *IngestRequest) error {
-	// Split text into chunks
-	chunks, err := s.splitText(req.Content)
+func (s *RAGService) IngestPokemonData(ctx context.Context, req *IngestRequest) error {
+	log.Printf("Starting Pokemon crawl with limit=%d", req.CrawlLimit)
+	
+	// Step 1: Get list of Pokemon URLs
+	pokemonURLs, err := s.crawler.CrawlPokemonList(ctx, req.CrawlLimit)
 	if err != nil {
-		return fmt.Errorf("failed to split text: %w", err)
+		return fmt.Errorf("failed to crawl pokemon list: %w", err)
 	}
 	
-	// Generate embeddings for chunks
-	embeddings, err := s.generateEmbeddings(chunks)
-	if err != nil {
-		return fmt.Errorf("failed to generate embeddings: %s", err)
+	log.Printf("Found %d Pokemon URLs to crawl", len(pokemonURLs))
+	
+	// Process start_from if specified
+	if req.StartFrom > 0 && req.StartFrom < len(pokemonURLs) {
+		pokemonURLs = pokemonURLs[req.StartFrom:]
 	}
 	
-	// Convert chunks to documents
-	var documents []model.Document
-	for _, chunk := range chunks {
-		documentID, _ := uuid.NewV7()
-		doc := model.Document{
-			ID:      documentID,
-			Content: chunk,
-			Metadata: map[string]string{
-				"source": req.Filename,
-			},
+	successCount := 0
+	failCount := 0
+	
+	// Step 2: Crawl each Pokemon and ingest
+	for i, url := range pokemonURLs {
+		log.Printf("Crawling Pokemon %d/%d: %s", i+1, len(pokemonURLs), url)
+		
+		// Crawl Pokemon details
+		pokemonData, err := s.crawler.CrawlPokemonDetails(ctx, url)
+		if err != nil {
+			log.Printf("Failed to crawl %s: %v", url, err)
+			failCount++
+			continue
 		}
-		documents = append(documents, doc)
+		
+		// Format Pokemon data for RAG
+		content := s.crawler.FormatPokemonForRAG(pokemonData)
+		
+		// Split into chunks if needed
+		chunks, err := s.splitText(content)
+		if err != nil {
+			log.Printf("Failed to split text for %s: %v", pokemonData.Name, err)
+			failCount++
+			continue
+		}
+		
+		// Generate embeddings
+		embeddings, err := s.generateEmbeddings(chunks)
+		if err != nil {
+			log.Printf("Failed to generate embeddings for %s: %v", pokemonData.Name, err)
+			failCount++
+			continue
+		}
+		
+		// Create documents
+		var documents []model.Document
+		for j, chunk := range chunks {
+			documentID, _ := uuid.NewV7()
+			doc := model.Document{
+				ID:      documentID,
+				Content: chunk,
+				Metadata: map[string]string{
+					"source":  pokemonDBSource,
+					"pokemon": pokemonData.Name,
+					"number":  pokemonData.Number,
+					"types":   strings.Join(pokemonData.Types, ","),
+					"chunk":   fmt.Sprintf("%d/%d", j+1, len(chunks)),
+				},
+			}
+			documents = append(documents, doc)
+		}
+		
+		// Store in vector database
+		if err = s.vectorRepo.Upsert(ctx, documents, embeddings); err != nil {
+			log.Printf("Failed to store %s: %v", pokemonData.Name, err)
+			failCount++
+			continue
+		}
+		
+		successCount++
+		log.Printf("Successfully ingested %s (%d chunks)", pokemonData.Name, len(chunks))
 	}
 	
-	// Store in vector db
-	if err = s.vectorRepo.Upsert(ctx, documents, embeddings); err != nil {
-		return fmt.Errorf("failed to store documents: %w", err)
+	log.Printf("Pokemon crawl completed: %d success, %d failed", successCount, failCount)
+	
+	if successCount == 0 {
+		return fmt.Errorf("failed to ingest any Pokemon data")
 	}
 	
 	return nil
 }
 
 func (s *RAGService) splitText(text string) ([]string, error) {
+	// For smaller Pokemon entries, don't split unnecessarily
+	if len(text) < s.config.RAG.ChunkSize {
+		return []string{text}, nil
+	}
+	
 	splitter := textsplitter.NewRecursiveCharacter(
 		textsplitter.WithChunkSize(s.config.RAG.ChunkSize),
 		textsplitter.WithChunkOverlap(s.config.RAG.ChunkOverlap),
-		textsplitter.WithSeparators([]string{"\n\n", "\n", ". ", " "}),
+		textsplitter.WithSeparators([]string{"\n\n===", "\n\n", "\n", ". ", " "}),
 	)
 	
 	chunks, err := splitter.SplitText(text)
@@ -117,12 +188,21 @@ func (s *RAGService) generateEmbeddings(texts []string) ([][]float32, error) {
 	
 	var result OllamaEmbedResponse
 	
-	_, err := s.restClient.R().
+	resp, err := s.restClient.R().
 		SetBody(reqBody).
 		SetResult(&result).
 		Post(s.config.Ollama.BaseURL + "/api/embed")
+	
 	if err != nil {
 		return nil, err
+	}
+	
+	if resp.StatusCode() != 200 {
+		return nil, fmt.Errorf("embedding API returned status %d: %s", resp.StatusCode(), resp.String())
+	}
+	
+	if len(result.Embeddings) == 0 {
+		return nil, errors.New("no embeddings returned from API")
 	}
 	
 	return result.Embeddings, nil
@@ -138,11 +218,11 @@ func (req ChatRequest) Validate() error {
 	if len(req.Message) == 0 {
 		return errors.New("message cannot be empty")
 	}
-
+	
 	if len(req.Message) > 1000 {
 		return model.ErrMessageTooLong
 	}
-
+	
 	return nil
 }
 
@@ -153,7 +233,7 @@ type ChatResponse struct {
 }
 
 func (s *RAGService) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
-	// Generate embedding for user usage
+	// Generate embedding for user query
 	embeddings, err := s.generateEmbeddings([]string{req.Message})
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate query embedding: %w", err)
@@ -168,12 +248,24 @@ func (s *RAGService) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse,
 	// Build context from search results
 	var contextBuilder strings.Builder
 	var sources []string
+	seenSources := make(map[string]bool)
 	
-	contextBuilder.WriteString("Context:\n")
+	contextBuilder.WriteString("Context Information:\n\n")
 	for i, result := range searchResults {
-		contextBuilder.WriteString(fmt.Sprintf("%d. %s\n", i+1, result.Content))
-		if source, ok := result.Metadata["source"]; ok && source != "" {
-			sources = append(sources, source)
+		contextBuilder.WriteString(fmt.Sprintf("[%d] %s\n\n", i+1, result.Content))
+		
+		// Collect unique sources
+		if pokemon, ok := result.Metadata["pokemon"]; ok && pokemon != "" {
+			sourceStr := fmt.Sprintf("Pokemon: %s", pokemon)
+			if !seenSources[sourceStr] {
+				sources = append(sources, sourceStr)
+				seenSources[sourceStr] = true
+			}
+		} else if source, ok := result.Metadata["source"]; ok && source != "" {
+			if !seenSources[source] {
+				sources = append(sources, source)
+				seenSources[source] = true
+			}
 		}
 	}
 	
@@ -186,20 +278,17 @@ func (s *RAGService) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse,
 		return nil, fmt.Errorf("failed to generate response: %w", err)
 	}
 	
-	// Remove duplicate sources
-	sources = removeDuplicates(sources)
-	
 	return &ChatResponse{
 		Response: resp,
 		Sources:  sources,
-		Context:  req.Message, // Simple context for follow-up questions
+		Context:  req.Message, // Store for follow-up questions
 	}, nil
 }
 
 func (s *RAGService) buildPrompt(context, question, previousContext string) string {
 	var promptBuilder strings.Builder
 	
-	promptBuilder.WriteString("You are a helpful AI assistant. Answer the question based on the provided context.\n\n")
+	promptBuilder.WriteString("You are a helpful Pokemon expert assistant. Answer questions based on the provided context about Pokemon.\n\n")
 	promptBuilder.WriteString(context)
 	promptBuilder.WriteString("\n")
 	
@@ -208,16 +297,22 @@ func (s *RAGService) buildPrompt(context, question, previousContext string) stri
 	}
 	
 	promptBuilder.WriteString(fmt.Sprintf("Question: %s\n\n", question))
-	promptBuilder.WriteString("Answer based on the context above. If the context doesn't contain relevant information, say so clearly.\n\n")
+	promptBuilder.WriteString("Instructions:\n")
+	promptBuilder.WriteString("- Answer based on the context above\n")
+	promptBuilder.WriteString("- Be specific and accurate about Pokemon stats, types, and abilities\n")
+	promptBuilder.WriteString("- If comparing Pokemon, use specific numbers when available\n")
+	promptBuilder.WriteString("- If the context doesn't contain the information, say so clearly\n")
+	promptBuilder.WriteString("- Keep your answer concise but informative\n\n")
 	promptBuilder.WriteString("Answer:")
 	
 	return promptBuilder.String()
 }
 
 type OllamaChatRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Stream bool   `json:"stream"`
+	Model   string                 `json:"model"`
+	Prompt  string                 `json:"prompt"`
+	Stream  bool                   `json:"stream"`
+	Options map[string]interface{} `json:"options,omitempty"`
 }
 
 type OllamaChatResponse struct {
@@ -229,15 +324,24 @@ func (s *RAGService) generateResponse(prompt string) (string, error) {
 		Model:  s.config.Ollama.ChatModel,
 		Prompt: prompt,
 		Stream: false,
+		Options: map[string]interface{}{
+			"temperature": 0.3, // Lower temperature for factual responses
+			"top_p":       0.9,
+		},
 	}
 	
 	var result OllamaChatResponse
-	_, err := s.restClient.R().
+	resp, err := s.restClient.R().
 		SetBody(reqBody).
 		SetResult(&result).
 		Post(s.config.Ollama.BaseURL + "/api/generate")
+	
 	if err != nil {
 		return "", err
+	}
+	
+	if resp.StatusCode() != 200 {
+		return "", fmt.Errorf("chat API returned status %d: %s", resp.StatusCode(), resp.String())
 	}
 	
 	return result.Response, nil
