@@ -41,9 +41,9 @@ func NewRAGService(
 }
 
 type IngestRequest struct {
-	Source     string `json:"source,omitempty"`      // "pokemondb" or "text"
-	CrawlLimit int    `json:"crawl_limit,omitempty"` // Number of Pokemon to crawl (default 10)
-	StartFrom  int    `json:"start_from,omitempty"`  // Start from Pokemon number (for pagination)
+	Source     string `json:"source,omitempty"` // "pokemondb" or "text"
+	CrawlLimit int    `json:"crawl_limit"`      // Number of Pokemon to crawl (default 10)
+	StartFrom  int    `json:"start_from"`       // Start from Pokemon number (for pagination)
 }
 
 func (req *IngestRequest) Validate() error {
@@ -57,7 +57,6 @@ func (req *IngestRequest) Validate() error {
 	
 	if req.CrawlLimit > 151 {
 		req.CrawlLimit = 151 // Max Gen 1 Pokemon
-		
 	}
 	
 	return nil
@@ -208,9 +207,14 @@ func (s *RAGService) generateEmbeddings(texts []string) ([][]float32, error) {
 	return result.Embeddings, nil
 }
 
+type ConversationMessage struct {
+	Type    string `json:"type"` // "user" | "assistant"
+	Content string `json:"content"`
+}
+
 type ChatRequest struct {
-	Message string `json:"message"`
-	Context string `json:"context"`
+	Message             string                `json:"message"`
+	ConversationHistory []ConversationMessage `json:"conversation_history"`
 }
 
 func (req ChatRequest) Validate() error {
@@ -221,6 +225,21 @@ func (req ChatRequest) Validate() error {
 	
 	if len(req.Message) > 1000 {
 		return model.ErrMessageTooLong
+	}
+	
+	// Validate conversation history
+	if len(req.ConversationHistory) > 20 {
+		return errors.New("conversation history too long (max 20 messages)")
+	}
+	
+	for _, msg := range req.ConversationHistory {
+		if msg.Type != "user" && msg.Type != "assistant" {
+			return fmt.Errorf("invalid message type: %s (must be 'user' or 'assistant')", msg.Type)
+		}
+		
+		if len(msg.Content) > 2000 {
+			return errors.New("conversation message too long (max 2000 characters)")
+		}
 	}
 	
 	return nil
@@ -245,7 +264,26 @@ func (s *RAGService) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse,
 		return nil, fmt.Errorf("failed to search documents: %w", err)
 	}
 	
-	// Build context from search results
+	// Build RAG context from search results
+	ragContext := s.buildRAGContext(searchResults)
+	
+	// Build prompt with conversation history
+	prompt := s.buildPromptWithHistory(ragContext, req.Message, req.ConversationHistory)
+	
+	// Generate response from LLM
+	resp, err := s.generateResponse(prompt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate response: %w", err)
+	}
+	
+	return &ChatResponse{
+		Response: resp,
+		Sources:  s.extractSources(searchResults),
+		Context:  req.Message, // Store for follow-up questions
+	}, nil
+}
+
+func (s *RAGService) buildRAGContext(searchResults []model.SearchResult) string {
 	var contextBuilder strings.Builder
 	var sources []string
 	seenSources := make(map[string]bool)
@@ -261,6 +299,24 @@ func (s *RAGService) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse,
 				sources = append(sources, sourceStr)
 				seenSources[sourceStr] = true
 			}
+		}
+	}
+	
+	return contextBuilder.String()
+}
+
+// New method to extract sources
+func (s *RAGService) extractSources(searchResults []model.SearchResult) []string {
+	var sources []string
+	seenSources := make(map[string]bool)
+	
+	for _, result := range searchResults {
+		if pokemon, ok := result.Metadata["pokemon"]; ok && pokemon != "" {
+			sourceStr := fmt.Sprintf("Pokemon: %s", pokemon)
+			if !seenSources[sourceStr] {
+				sources = append(sources, sourceStr)
+				seenSources[sourceStr] = true
+			}
 		} else if source, ok := result.Metadata["source"]; ok && source != "" {
 			if !seenSources[source] {
 				sources = append(sources, source)
@@ -269,36 +325,36 @@ func (s *RAGService) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse,
 		}
 	}
 	
-	// Build prompt for LLM
-	prompt := s.buildPrompt(contextBuilder.String(), req.Message, req.Context)
-	
-	// Generate response from LLM
-	resp, err := s.generateResponse(prompt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate response: %w", err)
-	}
-	
-	return &ChatResponse{
-		Response: resp,
-		Sources:  sources,
-		Context:  req.Message, // Store for follow-up questions
-	}, nil
+	return sources
 }
 
-func (s *RAGService) buildPrompt(context, question, previousContext string) string {
+// Update buildPrompt method to handle conversation history
+func (s *RAGService) buildPromptWithHistory(ragContext, question string, conversationHistory []ConversationMessage) string {
 	var promptBuilder strings.Builder
 	
 	promptBuilder.WriteString("You are a helpful Pokemon expert assistant. Answer questions based on the provided context about Pokemon.\n\n")
-	promptBuilder.WriteString(context)
+	
+	// Add RAG context
+	promptBuilder.WriteString(ragContext)
 	promptBuilder.WriteString("\n")
 	
-	if previousContext != "" {
-		promptBuilder.WriteString(fmt.Sprintf("Previous question: %s\n", previousContext))
+	// Add conversation history if available
+	if len(conversationHistory) > 0 {
+		promptBuilder.WriteString("=== Recent Conversation ===\n")
+		for _, msg := range conversationHistory {
+			role := "Human"
+			if msg.Type == "assistant" {
+				role = "Assistant"
+			}
+			promptBuilder.WriteString(fmt.Sprintf("%s: %s\n", role, msg.Content))
+		}
+		promptBuilder.WriteString("\n")
 	}
 	
-	promptBuilder.WriteString(fmt.Sprintf("Question: %s\n\n", question))
+	promptBuilder.WriteString(fmt.Sprintf("Current Question: %s\n\n", question))
 	promptBuilder.WriteString("Instructions:\n")
-	promptBuilder.WriteString("- Answer based on the context above\n")
+	promptBuilder.WriteString("- Answer based on the context above and conversation history\n")
+	promptBuilder.WriteString("- Use conversation context to understand references (it, that Pokemon, etc.)\n")
 	promptBuilder.WriteString("- Be specific and accurate about Pokemon stats, types, and abilities\n")
 	promptBuilder.WriteString("- If comparing Pokemon, use specific numbers when available\n")
 	promptBuilder.WriteString("- If the context doesn't contain the information, say so clearly\n")
