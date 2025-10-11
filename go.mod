@@ -6,6 +6,7 @@ require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/gocolly/colly/v2 v2.2.0
 	github.com/google/uuid v1.6.0
+	github.com/pkoukk/tiktoken-go v0.1.8
 	github.com/qdrant/go-client v1.15.2
 	github.com/tmc/langchaingo v0.1.13
 	gopkg.in/yaml.v3 v3.0.1
@@ -42,7 +43,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nlnwa/whatwg-url v0.6.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
-	github.com/pkoukk/tiktoken-go v0.1.6 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/temoto/robotstxt v1.1.2 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect

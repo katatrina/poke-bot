@@ -6,6 +6,7 @@ import { useLocalStorage } from './hooks/useLocalStorage';
 import { useConversationLimits } from './hooks/useConversationLimits';
 import { apiService } from './services/api';
 import type { Message, Session, SessionsState, ConversationMessage } from './types';
+import { CONVERSATION_LIMITS } from './types';
 
 function App() {
     const [sessions, setSessions] = useLocalStorage<SessionsState>('chat-sessions', {});
@@ -110,11 +111,17 @@ function App() {
         setIsLoading(true);
 
         try {
-            // Build conversation history
-            const conversationHistory: ConversationMessage[] = currentSession!.messages.map(msg => ({
-                type: msg.type === 'user' ? 'user' : 'assistant',
-                content: msg.content,
-            }));
+            // Build conversation history - only send last N turns (sliding window)
+            const allMessages = currentSession!.messages;
+            const maxHistoryMessages = CONVERSATION_LIMITS.MAX_HISTORY_TURNS * 2; // 2 messages per turn
+            const recentMessages = allMessages.slice(-maxHistoryMessages);
+
+            const conversationHistory: ConversationMessage[] = recentMessages
+                .filter(msg => msg.type !== 'error') // Exclude error messages from history
+                .map(msg => ({
+                    type: msg.type === 'user' ? 'user' : 'assistant',
+                    content: msg.content,
+                }));
 
             const response = await apiService.chat({
                 message: content,

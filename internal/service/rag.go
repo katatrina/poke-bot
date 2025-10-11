@@ -13,6 +13,7 @@ import (
 	"github.com/katatrina/poke-bot/internal/crawler"
 	"github.com/katatrina/poke-bot/internal/model"
 	"github.com/katatrina/poke-bot/internal/repository"
+	"github.com/pkoukk/tiktoken-go"
 	"github.com/tmc/langchaingo/textsplitter"
 	"resty.dev/v3"
 )
@@ -20,6 +21,28 @@ import (
 const (
 	pokemonDBSource = "pokemondb"
 )
+
+var (
+	// Global tokenizer instance for cl100k_base encoding (used by GPT-3.5 and GPT-4)
+	tokenizer *tiktoken.Tiktoken
+)
+
+func init() {
+	var err error
+	tokenizer, err = tiktoken.GetEncoding("cl100k_base")
+	if err != nil {
+		log.Printf("Warning: failed to initialize tokenizer: %v. Token counting will use character approximation.", err)
+	}
+}
+
+// countTokens counts the number of tokens in the given text
+func countTokens(text string) int {
+	if tokenizer == nil {
+		// Fallback: approximate tokens as characters / 4
+		return len(text) / 4
+	}
+	return len(tokenizer.Encode(text, nil, nil))
+}
 
 type RAGService struct {
 	config     *config.Config
@@ -221,31 +244,56 @@ type ChatRequest struct {
 // ErrConversationTooLong is returned when conversation history exceeds the maximum allowed length
 var ErrConversationTooLong = errors.New("conversation too long, please start a new chat session")
 
-func (req ChatRequest) Validate() error {
-	// Validate message
+func (req *ChatRequest) Validate() error {
+	// 1. Sanitize the current message
+	req.Message = SanitizeInput(req.Message)
+
+	// 2. Validate message length
 	if len(req.Message) == 0 {
-		return errors.New("message cannot be empty")
+		return ErrEmptyMessage
 	}
 	if len(req.Message) > 1000 {
-		return model.ErrMessageTooLong
+		return ErrMessageTooLong
 	}
 
-	// Hard limit on conversation length
-	if len(req.ConversationHistory) > 30 { // 15 turns = 30 messages
-		return ErrConversationTooLong
+	// 3. Check for prompt injection attempts
+	if DetectPromptInjection(req.Message) {
+		return ErrPromptInjection
 	}
 
-	// Validate total size
-	totalChars := len(req.Message)
-	for _, msg := range req.ConversationHistory {
-		if msg.Type != "user" && msg.Type != "assistant" {
-			return fmt.Errorf("invalid message type: %s", msg.Type)
+	// 4. Validate conversation history length
+	// Frontend sends sliding window of last N turns (max_history_turns * 2 messages)
+	// Allow a bit more (15 messages = ~7 turns) to account for edge cases
+	if len(req.ConversationHistory) > 15 {
+		return errors.New("conversation history too long (max 15 messages)")
+	}
+
+	// 5. Sanitize and validate conversation history
+	totalTokens := countTokens(req.Message)
+	for i := range req.ConversationHistory {
+		// Validate message type
+		if req.ConversationHistory[i].Type != "user" && req.ConversationHistory[i].Type != "assistant" {
+			return fmt.Errorf("invalid message type: %s", req.ConversationHistory[i].Type)
 		}
-		totalChars += len(msg.Content)
+
+		// Sanitize content
+		req.ConversationHistory[i].Content = SanitizeInput(req.ConversationHistory[i].Content)
+
+		// Check for prompt injection in history
+		if DetectPromptInjection(req.ConversationHistory[i].Content) {
+			return fmt.Errorf("conversation history contains suspicious patterns")
+		}
+
+		// Validate length
+		if len(req.ConversationHistory[i].Content) > 2000 {
+			return errors.New("conversation message too long (max 2000 characters)")
+		}
+
+		totalTokens += countTokens(req.ConversationHistory[i].Content)
 	}
 
-	// Hard limit on total characters
-	if totalChars > 10000 {
+	// 6. Hard limit on total tokens (2500 tokens for conversation)
+	if totalTokens > 2500 {
 		return ErrConversationTooLong
 	}
 
@@ -315,20 +363,92 @@ func (s *RAGService) buildRAGContext(searchResults []model.SearchResult) string 
 }
 
 
-// Update buildPrompt method to handle conversation history
+// buildPromptWithHistory builds the prompt with smart truncation to fit within context window
+// Priority: Instructions > Current Question > Recent History > RAG Context
 func (s *RAGService) buildPromptWithHistory(ragContext, question string, conversationHistory []ConversationMessage) string {
-	var promptBuilder strings.Builder
+	// Get max context tokens from config
+	maxContextTokens := s.config.RAG.MaxContextTokens
+	if maxContextTokens == 0 {
+		maxContextTokens = 4000 // Default fallback
+	}
 
-	promptBuilder.WriteString("You are a helpful Pokemon expert assistant. Answer questions based on the provided context about Pokemon.\n\n")
+	// Define fixed components (highest priority)
+	systemPrompt := "You are a helpful Pokemon expert assistant. Answer questions based on the provided context about Pokemon.\n\n"
+	instructions := "\nInstructions:\n" +
+		"- Answer based on the context above and conversation history\n" +
+		"- Use conversation context to understand references (it, that Pokemon, etc.)\n" +
+		"- Be specific and accurate about Pokemon stats, types, and abilities\n" +
+		"- If comparing Pokemon, use specific numbers when available\n" +
+		"- If the context doesn't contain the information, say so clearly\n" +
+		"- Keep your answer concise but informative\n\n" +
+		"Answer:"
+
+	// Count tokens for fixed components (always included)
+	questionWithLabel := fmt.Sprintf("Current Question: %s\n", question)
+	tokensUsed := countTokens(systemPrompt + questionWithLabel + instructions)
+
+	// Fit as much recent history as possible (second priority)
+	recentHistory := []ConversationMessage{}
+	historyTruncated := false
+	for i := len(conversationHistory) - 1; i >= 0; i-- {
+		role := "Human"
+		if conversationHistory[i].Type == "assistant" {
+			role = "Assistant"
+		}
+		msgText := fmt.Sprintf("%s: %s\n", role, conversationHistory[i].Content)
+		msgTokens := countTokens(msgText)
+
+		if tokensUsed+msgTokens > maxContextTokens {
+			historyTruncated = true
+			break
+		}
+
+		recentHistory = append([]ConversationMessage{conversationHistory[i]}, recentHistory...)
+		tokensUsed += msgTokens
+	}
+
+	// Calculate remaining tokens for RAG context
+	remainingTokens := maxContextTokens - tokensUsed
+	if remainingTokens < 0 {
+		remainingTokens = 0
+	}
+
+	// Truncate RAG context if needed (lowest priority)
+	truncatedRagContext, ragTruncated := s.truncateToTokens(ragContext, remainingTokens)
+
+	// Log truncation for monitoring
+	if historyTruncated {
+		log.Printf("Truncated conversation history from %d to %d messages",
+			len(conversationHistory), len(recentHistory))
+	}
+	if ragTruncated {
+		originalTokens := countTokens(ragContext)
+		log.Printf("Truncated RAG context from %d to %d tokens", originalTokens, remainingTokens)
+	}
+
+	// Build final prompt
+	var promptBuilder strings.Builder
+	promptBuilder.WriteString(systemPrompt)
 
 	// Add RAG context
-	promptBuilder.WriteString(ragContext)
-	promptBuilder.WriteString("\n")
+	if len(truncatedRagContext) > 0 {
+		if ragTruncated {
+			promptBuilder.WriteString("Context Information (truncated):\n\n")
+		} else {
+			promptBuilder.WriteString("Context Information:\n\n")
+		}
+		promptBuilder.WriteString(truncatedRagContext)
+		promptBuilder.WriteString("\n")
+	}
 
-	// Add conversation history if available
-	if len(conversationHistory) > 0 {
-		promptBuilder.WriteString("=== Recent Conversation ===\n")
-		for _, msg := range conversationHistory {
+	// Add conversation history
+	if len(recentHistory) > 0 {
+		if historyTruncated {
+			promptBuilder.WriteString("=== Recent Conversation (earlier messages omitted) ===\n")
+		} else {
+			promptBuilder.WriteString("=== Recent Conversation ===\n")
+		}
+		for _, msg := range recentHistory {
 			role := "Human"
 			if msg.Type == "assistant" {
 				role = "Assistant"
@@ -338,17 +458,64 @@ func (s *RAGService) buildPromptWithHistory(ragContext, question string, convers
 		promptBuilder.WriteString("\n")
 	}
 
-	promptBuilder.WriteString(fmt.Sprintf("Current Question: %s\n\n", question))
-	promptBuilder.WriteString("Instructions:\n")
-	promptBuilder.WriteString("- Answer based on the context above and conversation history\n")
-	promptBuilder.WriteString("- Use conversation context to understand references (it, that Pokemon, etc.)\n")
-	promptBuilder.WriteString("- Be specific and accurate about Pokemon stats, types, and abilities\n")
-	promptBuilder.WriteString("- If comparing Pokemon, use specific numbers when available\n")
-	promptBuilder.WriteString("- If the context doesn't contain the information, say so clearly\n")
-	promptBuilder.WriteString("- Keep your answer concise but informative\n\n")
-	promptBuilder.WriteString("Answer:")
+	// Add current question and instructions
+	promptBuilder.WriteString(questionWithLabel)
+	promptBuilder.WriteString(instructions)
 
 	return promptBuilder.String()
+}
+
+// truncateToTokens truncates text to fit within a token budget
+// Returns the truncated text and whether truncation occurred
+func (s *RAGService) truncateToTokens(text string, maxTokens int) (string, bool) {
+	if maxTokens <= 0 {
+		return "", true
+	}
+
+	currentTokens := countTokens(text)
+	if currentTokens <= maxTokens {
+		return text, false
+	}
+
+	// Binary search for the right length
+	// Approximate: 1 token ≈ 4 characters
+	estimatedChars := maxTokens * 4
+	if estimatedChars > len(text) {
+		estimatedChars = len(text)
+	}
+
+	// Start with estimated length and adjust
+	low, high := 0, len(text)
+	result := ""
+
+	for low < high {
+		mid := (low + high + 1) / 2
+		if mid > len(text) {
+			mid = len(text)
+		}
+
+		candidate := text[:mid]
+		tokens := countTokens(candidate)
+
+		if tokens <= maxTokens {
+			result = candidate
+			low = mid
+		} else {
+			high = mid - 1
+		}
+
+		// Prevent infinite loop
+		if high-low < 10 {
+			break
+		}
+	}
+
+	// Add truncation indicator
+	if len(result) < len(text) {
+		result += "\n... (content truncated)"
+	}
+
+	return result, true
 }
 
 type OllamaChatRequest struct {

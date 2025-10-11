@@ -37,7 +37,8 @@ export interface ApiError {
 }
 
 export const CONVERSATION_LIMITS = {
-    MAX_TURNS: 15,           // 30 messages total
-    MAX_TOTAL_CHARS: 10000,  // ~2500 tokens
-    WARNING_THRESHOLD: 12,   // Warn at 12 turns (24 messages)
+    MAX_TURNS: 15,              // 30 messages total before forcing new chat
+    MAX_TOTAL_TOKENS: 2500,     // Max tokens (using cl100k_base encoding)
+    WARNING_THRESHOLD: 12,      // Warn at 12 turns (24 messages)
+    MAX_HISTORY_TURNS: 5,       // Send only last 5 turns (10 messages) to LLM
 } as const;

@@ -75,6 +75,16 @@ func (hdl *HTTPHandler) Chat(c *gin.Context) {
 			return
 		}
 
+		// Special handling for prompt injection
+		if errors.Is(err, service.ErrPromptInjection) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "invalid_input",
+				"message": "Your message contains patterns that are not allowed. Please rephrase your question.",
+				"details": err.Error(),
+			})
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
 		})

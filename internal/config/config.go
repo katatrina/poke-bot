@@ -35,7 +35,9 @@ type RAGConfig struct {
 	ChunkOverlap         int `yaml:"chunk_overlap"`
 	TopK                 int `yaml:"top_k"`
 	MaxConversationTurns int `yaml:"max_conversation_turns"`
-	MaxTotalCharacters   int `yaml:"max_total_characters"`
+	MaxTotalTokens       int `yaml:"max_total_tokens"`
+	MaxHistoryTurns      int `yaml:"max_history_turns"`
+	MaxContextTokens     int `yaml:"max_context_tokens"`
 }
 
 func LoadConfig(path string) (*Config, error) {
