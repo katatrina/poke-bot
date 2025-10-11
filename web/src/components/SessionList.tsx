@@ -126,7 +126,7 @@ export function SessionList({
                                                         </span>
                                                     )}
                                                 </div>
-                                                <p className="text-xs text-gray-500">
+                                                <p className="text-xs text-gray-500 mt-1">
                                                     {new Date(session.lastActivity).toLocaleDateString('en-US', {
                                                         month: 'short',
                                                         day: 'numeric',
@@ -134,19 +134,6 @@ export function SessionList({
                                                         minute: '2-digit'
                                                     })}
                                                 </p>
-                                                <div className="flex items-center gap-2 mt-1.5">
-                                                    <span className="text-xs text-gray-400">
-                                                        {session.messages.length} messages
-                                                    </span>
-                                                    <span className="text-xs text-gray-300">•</span>
-                                                    <span className={`text-xs ${
-                                                        status.isAtLimit ? 'text-red-600' :
-                                                            status.isNearLimit ? 'text-yellow-600' :
-                                                                'text-gray-400'
-                                                    }`}>
-                                                        {status.turns}/{CONVERSATION_LIMITS.MAX_TURNS} turns
-                                                    </span>
-                                                </div>
                                             </div>
                                             <button
                                                 onClick={(e) => {

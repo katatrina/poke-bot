@@ -14,7 +14,7 @@ export const ChatMessage = memo(({ message }: ChatMessageProps) => {
     return (
         <div
             className={`
-                group flex gap-3 mb-6
+                group flex gap-3 mb-4
                 ${isUser ? 'flex-row-reverse' : 'flex-row'}
                 animate-in slide-in-from-bottom-2 duration-300
             `}
@@ -33,9 +33,9 @@ export const ChatMessage = memo(({ message }: ChatMessageProps) => {
             </div>
 
             {/* Message Content */}
-            <div className="flex-1 max-w-[80%]">
+            <div className="max-w-[70%]">
                 <div className={`
-                    rounded-2xl px-4 py-3 shadow-sm
+                    rounded-2xl px-4 py-3 shadow-sm inline-block
                     ${isError
                     ? 'bg-red-50 border border-red-200'
                     : isUser
