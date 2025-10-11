@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 	"time"
-	
+
 	"github.com/gocolly/colly/v2"
 	"github.com/gocolly/colly/v2/extensions"
 )
@@ -22,21 +22,21 @@ func NewPokemonDBCrawler() *PokemonDBCrawler {
 		colly.MaxDepth(2),
 		colly.Async(false), // Synchronous for controlled crawling
 	)
-	
+
 	// Set delays to be respectful
 	c.Limit(&colly.LimitRule{
 		DomainGlob:  "pokemondb.net",
 		Delay:       500 * time.Millisecond,
 		RandomDelay: 200 * time.Millisecond,
 	})
-	
+
 	// Use random user agent
 	extensions.RandomUserAgent(c)
-	
+
 	c.OnError(func(r *colly.Response, err error) {
 		log.Printf("Error crawling %s: %v", r.Request.URL, err)
 	})
-	
+
 	return &PokemonDBCrawler{
 		collector: c,
 		baseURL:   "https://pokemondb.net",
@@ -62,12 +62,12 @@ type PokemonData struct {
 func (pc *PokemonDBCrawler) CrawlPokemonList(ctx context.Context, limit int) ([]string, error) {
 	var pokemonURLs []string
 	count := 0
-	
+
 	pc.collector.OnHTML("div.infocard-list-pkmn-lg > div.infocard", func(e *colly.HTMLElement) {
 		if count >= limit {
 			return
 		}
-		
+
 		// Get Pokemon URL
 		link := e.ChildAttr("span.infocard-lg-img a", "href")
 		if link != "" {
@@ -75,15 +75,15 @@ func (pc *PokemonDBCrawler) CrawlPokemonList(ctx context.Context, limit int) ([]
 			count++
 		}
 	})
-	
+
 	// Start from National Pokedex
 	err := pc.collector.Visit(pc.baseURL + "/pokedex/national")
 	if err != nil {
 		return nil, fmt.Errorf("failed to visit pokedex: %w", err)
 	}
-	
+
 	pc.collector.Wait()
-	
+
 	return pokemonURLs, nil
 }
 
@@ -96,20 +96,20 @@ func (pc *PokemonDBCrawler) CrawlPokemonDetails(ctx context.Context, url string)
 		WeakAgainst:   []string{},
 		StrongAgainst: []string{},
 	}
-	
+
 	detailCollector := pc.collector.Clone()
-	
+
 	// Get Pokemon name and number
 	detailCollector.OnHTML("main h1", func(e *colly.HTMLElement) {
 		pokemon.Name = strings.TrimSpace(e.Text)
 	})
-	
+
 	// Get Pokemon number from breadcrumb or table
 	detailCollector.OnHTML("table.vitals-table tbody", func(e *colly.HTMLElement) {
 		e.ForEach("tr", func(_ int, row *colly.HTMLElement) {
 			header := strings.TrimSpace(row.ChildText("th"))
 			value := strings.TrimSpace(row.ChildText("td"))
-			
+
 			switch header {
 			case "National №":
 				pokemon.Number = value
@@ -136,18 +136,18 @@ func (pc *PokemonDBCrawler) CrawlPokemonDetails(ctx context.Context, url string)
 			}
 		})
 	})
-	
+
 	// Get base stats
 	detailCollector.OnHTML("div.resp-scroll", func(e *colly.HTMLElement) {
 		e.ForEach("table.vitals-table tbody tr", func(_ int, row *colly.HTMLElement) {
 			statName := strings.TrimSpace(row.ChildText("th"))
 			statValue := strings.TrimSpace(row.ChildText("td.cell-num"))
-			
+
 			if statValue != "" {
 				// Try to parse stat value
 				var value int
 				fmt.Sscanf(statValue, "%d", &value)
-				
+
 				switch statName {
 				case "HP":
 					pokemon.Stats["HP"] = value
@@ -167,7 +167,7 @@ func (pc *PokemonDBCrawler) CrawlPokemonDetails(ctx context.Context, url string)
 			}
 		})
 	})
-	
+
 	// Get Pokedex description
 	detailCollector.OnHTML("div.grid-col:has(h2:contains('Pokédex entries')) table tbody", func(e *colly.HTMLElement) {
 		// Get first available description
@@ -180,23 +180,23 @@ func (pc *PokemonDBCrawler) CrawlPokemonDetails(ctx context.Context, url string)
 			}
 		})
 	})
-	
+
 	// Get type effectiveness
 	detailCollector.OnHTML("div.grid-col:has(h2:contains('Type defenses'))", func(e *colly.HTMLElement) {
 		e.ForEach("table.type-table tbody tr", func(_ int, row *colly.HTMLElement) {
 			header := strings.TrimSpace(row.ChildText("th"))
-			
+
 			if strings.Contains(header, "damaged normally by") {
 				// Skip normal damage
 				return
 			}
-			
+
 			row.ForEach("td a.type-icon", func(_ int, typeElem *colly.HTMLElement) {
 				typeName := strings.TrimSpace(typeElem.Text)
 				if typeName == "" {
 					return
 				}
-				
+
 				if strings.Contains(header, "weak to") || strings.Contains(header, "damaged by") {
 					// Check for 2× or 4× weakness
 					title := typeElem.Attr("title")
@@ -209,7 +209,7 @@ func (pc *PokemonDBCrawler) CrawlPokemonDetails(ctx context.Context, url string)
 			})
 		})
 	})
-	
+
 	// Get evolution chain
 	detailCollector.OnHTML("div.infocard-list-evo", func(e *colly.HTMLElement) {
 		e.ForEach("div.infocard", func(_ int, evo *colly.HTMLElement) {
@@ -219,33 +219,33 @@ func (pc *PokemonDBCrawler) CrawlPokemonDetails(ctx context.Context, url string)
 			}
 		})
 	})
-	
+
 	// Visit the Pokemon detail page
 	err := detailCollector.Visit(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to visit pokemon page %s: %w", url, err)
 	}
-	
+
 	detailCollector.Wait()
-	
+
 	// Validate we got essential data
 	if pokemon.Name == "" {
 		return nil, fmt.Errorf("failed to extract pokemon data from %s", url)
 	}
-	
+
 	return pokemon, nil
 }
 
 func (pc *PokemonDBCrawler) FormatPokemonForRAG(pokemon *PokemonData) string {
 	var sb strings.Builder
-	
+
 	// Header
 	sb.WriteString(fmt.Sprintf("Pokemon: %s", pokemon.Name))
 	if pokemon.Number != "" {
 		sb.WriteString(fmt.Sprintf(" (#%s)", pokemon.Number))
 	}
 	sb.WriteString("\n\n")
-	
+
 	// Basic Info
 	sb.WriteString("=== Basic Information ===\n")
 	if len(pokemon.Types) > 0 {
@@ -261,20 +261,20 @@ func (pc *PokemonDBCrawler) FormatPokemonForRAG(pokemon *PokemonData) string {
 		sb.WriteString(fmt.Sprintf("Weight: %s\n", pokemon.Weight))
 	}
 	sb.WriteString("\n")
-	
+
 	// Description
 	if pokemon.Description != "" {
 		sb.WriteString("=== Description ===\n")
 		sb.WriteString(pokemon.Description)
 		sb.WriteString("\n\n")
 	}
-	
+
 	// Abilities
 	if len(pokemon.Abilities) > 0 {
 		sb.WriteString("=== Abilities ===\n")
 		sb.WriteString(fmt.Sprintf("%s\n\n", strings.Join(pokemon.Abilities, ", ")))
 	}
-	
+
 	// Base Stats
 	if len(pokemon.Stats) > 0 {
 		sb.WriteString("=== Base Stats ===\n")
@@ -301,7 +301,7 @@ func (pc *PokemonDBCrawler) FormatPokemonForRAG(pokemon *PokemonData) string {
 		}
 		sb.WriteString("\n")
 	}
-	
+
 	// Type Effectiveness
 	if len(pokemon.WeakAgainst) > 0 || len(pokemon.StrongAgainst) > 0 {
 		sb.WriteString("=== Type Effectiveness ===\n")
@@ -313,14 +313,14 @@ func (pc *PokemonDBCrawler) FormatPokemonForRAG(pokemon *PokemonData) string {
 		}
 		sb.WriteString("\n")
 	}
-	
+
 	// Evolution
 	if len(pokemon.Evolutions) > 0 {
 		sb.WriteString("=== Evolution Chain ===\n")
 		sb.WriteString(fmt.Sprintf("Evolves to/from: %s\n", strings.Join(pokemon.Evolutions, " → ")))
 		sb.WriteString("\n")
 	}
-	
+
 	// Additional context for Q&A
 	sb.WriteString("=== Quick Facts ===\n")
 	sb.WriteString(fmt.Sprintf("- %s is a %s type Pokemon\n", pokemon.Name, strings.Join(pokemon.Types, "/")))
@@ -341,6 +341,6 @@ func (pc *PokemonDBCrawler) FormatPokemonForRAG(pokemon *PokemonData) string {
 	if len(pokemon.Abilities) > 0 {
 		sb.WriteString(fmt.Sprintf("- Primary ability: %s\n", pokemon.Abilities[0]))
 	}
-	
+
 	return sb.String()
 }

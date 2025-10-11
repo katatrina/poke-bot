@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
-	
+
 	"github.com/katatrina/poke-bot/internal/config"
 	"github.com/katatrina/poke-bot/internal/model"
 	"github.com/qdrant/go-client/qdrant"
@@ -19,12 +19,12 @@ func NewVectorRepository(cfg *config.Config, qdrantClient *qdrant.Client) (*Vect
 		qdrantClient: qdrantClient,
 		collection:   cfg.Qdrant.Collection,
 	}
-	
+
 	// Ensure collection exists
 	if err := repo.ensureCollection(context.Background()); err != nil {
 		return nil, fmt.Errorf("failed to ensure collection: %w", err)
 	}
-	
+
 	return repo, nil
 }
 
@@ -33,14 +33,14 @@ func (repo *VectorRepository) ensureCollection(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Check if collection exists
 	for _, col := range collections {
 		if col == repo.collection {
 			return nil // Collection exists
 		}
 	}
-	
+
 	// Create collection
 	err = repo.qdrantClient.CreateCollection(ctx, &qdrant.CreateCollection{
 		CollectionName: repo.collection,
@@ -52,7 +52,7 @@ func (repo *VectorRepository) ensureCollection(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -60,7 +60,7 @@ func (repo *VectorRepository) Upsert(ctx context.Context, documents []model.Docu
 	if len(documents) != len(embeddings) {
 		return fmt.Errorf("documents and embeddings count mismatch: %d vs %d", len(documents), len(embeddings))
 	}
-	
+
 	var points []*qdrant.PointStruct
 	for i, doc := range documents {
 		// Convert metadata to Qdrant payload
@@ -69,21 +69,21 @@ func (repo *VectorRepository) Upsert(ctx context.Context, documents []model.Docu
 		for k, v := range doc.Metadata {
 			payload[k] = v
 		}
-		
+
 		point := qdrant.PointStruct{
 			Id:      qdrant.NewIDUUID(doc.ID.String()),
 			Vectors: qdrant.NewVectors(embeddings[i]...),
 			Payload: qdrant.NewValueMap(payload),
 		}
-		
+
 		points = append(points, &point)
 	}
-	
+
 	_, err := repo.qdrantClient.Upsert(ctx, &qdrant.UpsertPoints{
 		CollectionName: repo.collection,
 		Points:         points,
 	})
-	
+
 	return err
 }
 
@@ -98,28 +98,28 @@ func (repo *VectorRepository) Search(ctx context.Context, embedding []float32, l
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var results []model.SearchResult
 	for _, point := range searchResult {
 		result := model.SearchResult{
 			Score:    point.Score,
 			Metadata: make(map[string]string),
 		}
-		
+
 		// Extract content
 		if contentValue, ok := point.Payload["content"]; ok {
 			result.Content = contentValue.GetStringValue()
 		}
-		
+
 		// Extract other metadata
 		for k, v := range point.Payload {
 			if k != "content" {
 				result.Metadata[k] = v.GetStringValue()
 			}
 		}
-		
+
 		results = append(results, result)
 	}
-	
+
 	return results, nil
 }

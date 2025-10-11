@@ -7,7 +7,7 @@ import (
 	"log"
 	"strings"
 	"time"
-	
+
 	"github.com/google/uuid"
 	"github.com/katatrina/poke-bot/internal/config"
 	"github.com/katatrina/poke-bot/internal/crawler"
@@ -51,41 +51,41 @@ func (req *IngestRequest) Validate() error {
 	if req.Source != pokemonDBSource {
 		return fmt.Errorf("unsupported source: %s (must be 'pokemondb')", req.Source)
 	}
-	
+
 	if req.CrawlLimit <= 0 {
 		req.CrawlLimit = 10 // Default to 10 Pokemon
 	}
-	
+
 	if req.CrawlLimit > 151 {
 		req.CrawlLimit = 151 // Max Gen 1 Pokemon
 	}
-	
+
 	return nil
 }
 
 func (s *RAGService) IngestPokemonData(ctx context.Context, req *IngestRequest) error {
 	log.Printf("Starting Pokemon crawl with limit=%d", req.CrawlLimit)
-	
+
 	// Step 1: Get list of Pokemon URLs
 	pokemonURLs, err := s.crawler.CrawlPokemonList(ctx, req.CrawlLimit)
 	if err != nil {
 		return fmt.Errorf("failed to crawl pokemon list: %w", err)
 	}
-	
+
 	log.Printf("Found %d Pokemon URLs to crawl", len(pokemonURLs))
-	
+
 	// Process start_from if specified
 	if req.StartFrom > 0 && req.StartFrom < len(pokemonURLs) {
 		pokemonURLs = pokemonURLs[req.StartFrom:]
 	}
-	
+
 	successCount := 0
 	failCount := 0
-	
+
 	// Step 2: Crawl each Pokemon and ingest
 	for i, url := range pokemonURLs {
 		log.Printf("Crawling Pokemon %d/%d: %s", i+1, len(pokemonURLs), url)
-		
+
 		// Crawl Pokemon details
 		pokemonData, err := s.crawler.CrawlPokemonDetails(ctx, url)
 		if err != nil {
@@ -93,10 +93,10 @@ func (s *RAGService) IngestPokemonData(ctx context.Context, req *IngestRequest) 
 			failCount++
 			continue
 		}
-		
+
 		// Format Pokemon data for RAG
 		content := s.crawler.FormatPokemonForRAG(pokemonData)
-		
+
 		// Split into chunks if needed
 		chunks, err := s.splitText(content)
 		if err != nil {
@@ -104,7 +104,7 @@ func (s *RAGService) IngestPokemonData(ctx context.Context, req *IngestRequest) 
 			failCount++
 			continue
 		}
-		
+
 		// Generate embeddings
 		embeddings, err := s.generateEmbeddings(chunks)
 		if err != nil {
@@ -112,7 +112,7 @@ func (s *RAGService) IngestPokemonData(ctx context.Context, req *IngestRequest) 
 			failCount++
 			continue
 		}
-		
+
 		// Create documents
 		var documents []model.Document
 		for j, chunk := range chunks {
@@ -130,24 +130,24 @@ func (s *RAGService) IngestPokemonData(ctx context.Context, req *IngestRequest) 
 			}
 			documents = append(documents, doc)
 		}
-		
+
 		// Store in vector database
 		if err = s.vectorRepo.Upsert(ctx, documents, embeddings); err != nil {
 			log.Printf("Failed to store %s: %v", pokemonData.Name, err)
 			failCount++
 			continue
 		}
-		
+
 		successCount++
 		log.Printf("Successfully ingested %s (%d chunks)", pokemonData.Name, len(chunks))
 	}
-	
+
 	log.Printf("Pokemon crawl completed: %d success, %d failed", successCount, failCount)
-	
+
 	if successCount == 0 {
 		return fmt.Errorf("failed to ingest any Pokemon data")
 	}
-	
+
 	return nil
 }
 
@@ -156,18 +156,18 @@ func (s *RAGService) splitText(text string) ([]string, error) {
 	if len(text) < s.config.RAG.ChunkSize {
 		return []string{text}, nil
 	}
-	
+
 	splitter := textsplitter.NewRecursiveCharacter(
 		textsplitter.WithChunkSize(s.config.RAG.ChunkSize),
 		textsplitter.WithChunkOverlap(s.config.RAG.ChunkOverlap),
 		textsplitter.WithSeparators([]string{"\n\n===", "\n\n", "\n", ". ", " "}),
 	)
-	
+
 	chunks, err := splitter.SplitText(text)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return chunks, nil
 }
 
@@ -185,26 +185,26 @@ func (s *RAGService) generateEmbeddings(texts []string) ([][]float32, error) {
 		Model: s.config.Ollama.EmbeddingModel,
 		Input: texts,
 	}
-	
+
 	var result OllamaEmbedResponse
-	
+
 	resp, err := s.restClient.R().
 		SetBody(reqBody).
 		SetResult(&result).
 		Post(s.config.Ollama.BaseURL + "/api/embed")
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if resp.StatusCode() != 200 {
 		return nil, fmt.Errorf("embedding API returned status %d: %s", resp.StatusCode(), resp.String())
 	}
-	
+
 	if len(result.Embeddings) == 0 {
 		return nil, errors.New("no embeddings returned from API")
 	}
-	
+
 	return result.Embeddings, nil
 }
 
@@ -223,26 +223,26 @@ func (req ChatRequest) Validate() error {
 	if len(req.Message) == 0 {
 		return errors.New("message cannot be empty")
 	}
-	
+
 	if len(req.Message) > 1000 {
 		return model.ErrMessageTooLong
 	}
-	
+
 	// Validate conversation history
 	if len(req.ConversationHistory) > 20 {
 		return errors.New("conversation history too long (max 20 messages)")
 	}
-	
+
 	for _, msg := range req.ConversationHistory {
 		if msg.Type != "user" && msg.Type != "assistant" {
 			return fmt.Errorf("invalid message type: %s (must be 'user' or 'assistant')", msg.Type)
 		}
-		
+
 		if len(msg.Content) > 2000 {
 			return errors.New("conversation message too long (max 2000 characters)")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -258,29 +258,29 @@ func (s *RAGService) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse,
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate query embedding: %w", err)
 	}
-	
+
 	// Add timeout
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	
+
 	// Search for relevant documents
 	searchResults, err := s.vectorRepo.Search(ctx, embeddings[0], s.config.RAG.TopK)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search documents: %w", err)
 	}
-	
+
 	// Build RAG context from search results
 	ragContext := s.buildRAGContext(searchResults)
-	
+
 	// Build prompt with conversation history
 	prompt := s.buildPromptWithHistory(ragContext, req.Message, req.ConversationHistory)
-	
+
 	// Generate response from LLM
 	resp, err := s.generateResponse(prompt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate response: %w", err)
 	}
-	
+
 	return &ChatResponse{
 		Response: resp,
 		Sources:  s.extractSources(searchResults),
@@ -292,11 +292,11 @@ func (s *RAGService) buildRAGContext(searchResults []model.SearchResult) string 
 	var contextBuilder strings.Builder
 	var sources []string
 	seenSources := make(map[string]bool)
-	
+
 	contextBuilder.WriteString("Context Information:\n\n")
 	for i, result := range searchResults {
 		contextBuilder.WriteString(fmt.Sprintf("[%d] %s\n\n", i+1, result.Content))
-		
+
 		// Collect unique sources
 		if pokemon, ok := result.Metadata["pokemon"]; ok && pokemon != "" {
 			sourceStr := fmt.Sprintf("Pokemon: %s", pokemon)
@@ -306,7 +306,7 @@ func (s *RAGService) buildRAGContext(searchResults []model.SearchResult) string 
 			}
 		}
 	}
-	
+
 	return contextBuilder.String()
 }
 
@@ -314,7 +314,7 @@ func (s *RAGService) buildRAGContext(searchResults []model.SearchResult) string 
 func (s *RAGService) extractSources(searchResults []model.SearchResult) []string {
 	var sources []string
 	seenSources := make(map[string]bool)
-	
+
 	for _, result := range searchResults {
 		if pokemon, ok := result.Metadata["pokemon"]; ok && pokemon != "" {
 			sourceStr := fmt.Sprintf("Pokemon: %s", pokemon)
@@ -329,20 +329,20 @@ func (s *RAGService) extractSources(searchResults []model.SearchResult) []string
 			}
 		}
 	}
-	
+
 	return sources
 }
 
 // Update buildPrompt method to handle conversation history
 func (s *RAGService) buildPromptWithHistory(ragContext, question string, conversationHistory []ConversationMessage) string {
 	var promptBuilder strings.Builder
-	
+
 	promptBuilder.WriteString("You are a helpful Pokemon expert assistant. Answer questions based on the provided context about Pokemon.\n\n")
-	
+
 	// Add RAG context
 	promptBuilder.WriteString(ragContext)
 	promptBuilder.WriteString("\n")
-	
+
 	// Add conversation history if available
 	if len(conversationHistory) > 0 {
 		promptBuilder.WriteString("=== Recent Conversation ===\n")
@@ -355,7 +355,7 @@ func (s *RAGService) buildPromptWithHistory(ragContext, question string, convers
 		}
 		promptBuilder.WriteString("\n")
 	}
-	
+
 	promptBuilder.WriteString(fmt.Sprintf("Current Question: %s\n\n", question))
 	promptBuilder.WriteString("Instructions:\n")
 	promptBuilder.WriteString("- Answer based on the context above and conversation history\n")
@@ -365,7 +365,7 @@ func (s *RAGService) buildPromptWithHistory(ragContext, question string, convers
 	promptBuilder.WriteString("- If the context doesn't contain the information, say so clearly\n")
 	promptBuilder.WriteString("- Keep your answer concise but informative\n\n")
 	promptBuilder.WriteString("Answer:")
-	
+
 	return promptBuilder.String()
 }
 
@@ -390,21 +390,21 @@ func (s *RAGService) generateResponse(prompt string) (string, error) {
 			"top_p":       0.9,
 		},
 	}
-	
+
 	var result OllamaChatResponse
 	resp, err := s.restClient.R().
 		SetBody(reqBody).
 		SetResult(&result).
 		Post(s.config.Ollama.BaseURL + "/api/generate")
-	
+
 	if err != nil {
 		return "", err
 	}
-	
+
 	if resp.StatusCode() != 200 {
 		return "", fmt.Errorf("chat API returned status %d: %s", resp.StatusCode(), resp.String())
 	}
-	
+
 	return result.Response, nil
 }
 
@@ -412,13 +412,13 @@ func (s *RAGService) generateResponse(prompt string) (string, error) {
 func removeDuplicates(slice []string) []string {
 	keys := make(map[string]bool)
 	var result []string
-	
+
 	for _, item := range slice {
 		if !keys[item] {
 			keys[item] = true
 			result = append(result, item)
 		}
 	}
-	
+
 	return result
 }
