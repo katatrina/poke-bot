@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 	
 	"github.com/google/uuid"
 	"github.com/katatrina/poke-bot/internal/config"
@@ -257,6 +258,10 @@ func (s *RAGService) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse,
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate query embedding: %w", err)
 	}
+	
+	// Add timeout
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	
 	// Search for relevant documents
 	searchResults, err := s.vectorRepo.Search(ctx, embeddings[0], s.config.RAG.TopK)
