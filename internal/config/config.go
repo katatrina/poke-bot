@@ -31,9 +31,11 @@ type OllamaConfig struct {
 }
 
 type RAGConfig struct {
-	ChunkSize    int `yaml:"chunk_size"`
-	ChunkOverlap int `yaml:"chunk_overlap"`
-	TopK         int `yaml:"top_k"`
+	ChunkSize            int `yaml:"chunk_size"`
+	ChunkOverlap         int `yaml:"chunk_overlap"`
+	TopK                 int `yaml:"top_k"`
+	MaxConversationTurns int `yaml:"max_conversation_turns"`
+	MaxTotalCharacters   int `yaml:"max_total_characters"`
 }
 
 func LoadConfig(path string) (*Config, error) {

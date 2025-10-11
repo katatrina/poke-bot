@@ -3,6 +3,7 @@ import { ChatMessage } from './components/ChatMessage';
 import { ChatInput } from './components/ChatInput';
 import { SessionList } from './components/SessionList';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { useConversationLimits } from './hooks/useConversationLimits';
 import { apiService } from './services/api';
 import type { Message, Session, SessionsState, ConversationMessage } from './types';
 
@@ -13,6 +14,10 @@ function App() {
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const currentSession = currentSessionId ? sessions[currentSessionId] : null;
+
+    const conversationLimits = useConversationLimits(
+        currentSession?.messages || []
+    );
 
     useEffect(() => {
         // Auto-scroll to bottom when new messages arrive
@@ -75,6 +80,19 @@ function App() {
     const handleSendMessage = async (content: string) => {
         if (!currentSessionId) return;
 
+        // Check if at limit
+        if (conversationLimits.isAtLimit) {
+            // Don't send - show error
+            const errorMessage: Message = {
+                id: crypto.randomUUID(),
+                type: 'error',
+                content: conversationLimits.blockedMessage!,
+                timestamp: new Date().toISOString(),
+            };
+            addMessage(currentSessionId, errorMessage);
+            return;
+        }
+
         const userMessage: Message = {
             id: crypto.randomUUID(),
             type: 'user',
@@ -107,7 +125,6 @@ function App() {
                 id: crypto.randomUUID(),
                 type: 'assistant',
                 content: response.response,
-                sources: response.sources,
                 timestamp: new Date().toISOString(),
             };
 
@@ -166,10 +183,73 @@ function App() {
                     <p className="text-sm text-gray-500 mt-1">
                         Ask questions about Pokemon
                     </p>
+
+                    {/* Conversation limit indicator */}
+                    {currentSession && currentSession.messages.length > 0 && (
+                        <div className="flex items-center gap-2 mt-2">
+                            <div className="text-xs text-gray-400">
+                                {conversationLimits.currentTurns} / {conversationLimits.maxTurns} turns
+                            </div>
+                            <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                                <div
+                                    className={`h-1.5 rounded-full transition-all ${
+                                        conversationLimits.isAtLimit
+                                            ? 'bg-red-500'
+                                            : conversationLimits.isNearLimit
+                                                ? 'bg-yellow-500'
+                                                : 'bg-blue-500'
+                                    }`}
+                                    style={{
+                                        width: `${(conversationLimits.currentTurns / conversationLimits.maxTurns) * 100}%`
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-6">
+                    {/* Warning banner */}
+                    {conversationLimits.warningMessage && (
+                        <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <div className="flex items-start gap-3">
+                                <span className="text-2xl">⚠️</span>
+                                <div className="flex-1">
+                                    <p className="text-sm text-yellow-800">
+                                        {conversationLimits.warningMessage}
+                                    </p>
+                                    <button
+                                        onClick={createNewSession}
+                                        className="mt-2 text-sm text-yellow-900 underline hover:text-yellow-700"
+                                    >
+                                        Start new chat now
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Blocked banner */}
+                    {conversationLimits.isAtLimit && (
+                        <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4">
+                            <div className="flex items-start gap-3">
+                                <span className="text-2xl">🚫</span>
+                                <div className="flex-1">
+                                    <p className="text-sm text-red-800 font-medium">
+                                        {conversationLimits.blockedMessage}
+                                    </p>
+                                    <button
+                                        onClick={createNewSession}
+                                        className="mt-3 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+                                    >
+                                        Start New Chat
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {currentSession && currentSession.messages.length === 0 ? (
                         <div className="flex items-center justify-center h-full">
                             <div className="text-center text-gray-500">
@@ -200,7 +280,8 @@ function App() {
                 {/* Input */}
                 <ChatInput
                     onSendMessage={handleSendMessage}
-                    disabled={isLoading || !currentSessionId}
+                    disabled={isLoading || !currentSessionId || conversationLimits.isAtLimit}
+                    blockedMessage={conversationLimits.blockedMessage}
                 />
             </div>
         </div>

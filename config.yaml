@@ -16,3 +16,5 @@ rag:
   chunk_overlap: 100
   top_k: 5
   temperature: 0.3
+  max_conversation_turns: 15    # Max 15 turns (30 messages)
+  max_total_characters: 10000   # ~2500 tokens total

@@ -218,38 +218,43 @@ type ChatRequest struct {
 	ConversationHistory []ConversationMessage `json:"conversation_history"`
 }
 
+// ErrConversationTooLong is returned when conversation history exceeds the maximum allowed length
+var ErrConversationTooLong = errors.New("conversation too long, please start a new chat session")
+
 func (req ChatRequest) Validate() error {
-	// Validate message length
+	// Validate message
 	if len(req.Message) == 0 {
 		return errors.New("message cannot be empty")
 	}
-
 	if len(req.Message) > 1000 {
 		return model.ErrMessageTooLong
 	}
 
-	// Validate conversation history
-	if len(req.ConversationHistory) > 20 {
-		return errors.New("conversation history too long (max 20 messages)")
+	// Hard limit on conversation length
+	if len(req.ConversationHistory) > 30 { // 15 turns = 30 messages
+		return ErrConversationTooLong
 	}
 
+	// Validate total size
+	totalChars := len(req.Message)
 	for _, msg := range req.ConversationHistory {
 		if msg.Type != "user" && msg.Type != "assistant" {
-			return fmt.Errorf("invalid message type: %s (must be 'user' or 'assistant')", msg.Type)
+			return fmt.Errorf("invalid message type: %s", msg.Type)
 		}
+		totalChars += len(msg.Content)
+	}
 
-		if len(msg.Content) > 2000 {
-			return errors.New("conversation message too long (max 2000 characters)")
-		}
+	// Hard limit on total characters
+	if totalChars > 10000 {
+		return ErrConversationTooLong
 	}
 
 	return nil
 }
 
 type ChatResponse struct {
-	Response string   `json:"response"`
-	Sources  []string `json:"sources"`
-	Context  string   `json:"context"`
+	Response string `json:"response"`
+	Context  string `json:"context"`
 }
 
 func (s *RAGService) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
@@ -283,7 +288,6 @@ func (s *RAGService) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse,
 
 	return &ChatResponse{
 		Response: resp,
-		Sources:  s.extractSources(searchResults),
 		Context:  req.Message, // Store for follow-up questions
 	}, nil
 }
@@ -310,28 +314,6 @@ func (s *RAGService) buildRAGContext(searchResults []model.SearchResult) string 
 	return contextBuilder.String()
 }
 
-// New method to extract sources
-func (s *RAGService) extractSources(searchResults []model.SearchResult) []string {
-	var sources []string
-	seenSources := make(map[string]bool)
-
-	for _, result := range searchResults {
-		if pokemon, ok := result.Metadata["pokemon"]; ok && pokemon != "" {
-			sourceStr := fmt.Sprintf("Pokemon: %s", pokemon)
-			if !seenSources[sourceStr] {
-				sources = append(sources, sourceStr)
-				seenSources[sourceStr] = true
-			}
-		} else if source, ok := result.Metadata["source"]; ok && source != "" {
-			if !seenSources[source] {
-				sources = append(sources, source)
-				seenSources[source] = true
-			}
-		}
-	}
-
-	return sources
-}
 
 // Update buildPrompt method to handle conversation history
 func (s *RAGService) buildPromptWithHistory(ragContext, question string, conversationHistory []ConversationMessage) string {

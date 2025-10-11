@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -64,6 +65,16 @@ func (hdl *HTTPHandler) Chat(c *gin.Context) {
 	}
 
 	if err := req.Validate(); err != nil {
+		// Special handling for conversation too long
+		if errors.Is(err, service.ErrConversationTooLong) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{
+				"error":   "conversation_too_long",
+				"message": "This conversation has reached the maximum length. Please start a new chat session to continue.",
+				"details": err.Error(),
+			})
+			return
+		}
+
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": err.Error(),
 		})

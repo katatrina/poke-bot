@@ -2,7 +2,6 @@ export interface Message {
     id: string;
     type: 'user' | 'assistant' | 'error';
     content: string;
-    sources?: string[];
     timestamp: string;
 }
 
@@ -29,7 +28,6 @@ export interface ChatRequest {
 
 export interface ChatResponse {
     response: string;
-    sources: string[];
     context: string;
 }
 
@@ -37,3 +35,9 @@ export interface ApiError {
     error: string;
     details?: string;
 }
+
+export const CONVERSATION_LIMITS = {
+    MAX_TURNS: 15,           // 30 messages total
+    MAX_TOTAL_CHARS: 10000,  // ~2500 tokens
+    WARNING_THRESHOLD: 12,   // Warn at 12 turns (24 messages)
+} as const;
