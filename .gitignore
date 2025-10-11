@@ -1,5 +1,40 @@
-.idea/
-
+# Binaries
 *.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 
-refactor-frontend.md
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Go workspace file
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+plan.md
+roadmap.md
+
+# Dependencies
+vendor/
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.vite/
+web/*.local
