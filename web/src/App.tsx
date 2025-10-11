@@ -254,7 +254,7 @@ function App() {
                 </div>
 
                 {/* Input Area */}
-                <div className="bg-gray-100 px-6 py-4">
+                <div className="bg-transparent px-6 py-4">
                     <div className="max-w-3xl mx-auto">
                         <ChatInput
                             onSendMessage={handleSendMessage}

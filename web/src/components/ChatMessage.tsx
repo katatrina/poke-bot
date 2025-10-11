@@ -20,17 +20,17 @@ export const ChatMessage = memo(({ message }: ChatMessageProps) => {
             `}
         >
             {/* Avatar */}
-            <div className={`
-                flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium
-                ${isError
-                ? 'bg-red-100 text-red-600'
-                : isUser
-                    ? 'bg-blue-600 text-white'
+            {!isUser && (
+                <div className={`
+                    flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium
+                    ${isError
+                    ? 'bg-red-100 text-red-600'
                     : 'bg-gray-200 text-gray-700'
-            }
-            `}>
-                {isError ? '⚠️' : isUser ? 'U' : '🤖'}
-            </div>
+                }
+                `}>
+                    {isError ? '⚠️' : '🤖'}
+                </div>
+            )}
 
             {/* Message Content */}
             <div className="max-w-[70%]">
